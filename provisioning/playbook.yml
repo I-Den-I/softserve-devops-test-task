@@ -5,7 +5,6 @@
 
   roles:
     - common
-    # Наступні ролі ми додамо пізніше:
-    # - vault
+    - vault
     # - jenkins
     # - zabbix

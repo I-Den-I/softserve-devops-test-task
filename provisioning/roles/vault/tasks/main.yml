@@ -1,0 +1,42 @@
+---
+- name: Install gpg and basic tools
+  apt:
+    name: [gpg, curl]
+    state: present
+
+- name: Add HashiCorp GPG key
+  apt_key:
+    url: https://apt.releases.hashicorp.com/gpg
+    state: present
+
+- name: Add HashiCorp repository (dynamic architecture)
+  apt_repository:
+    repo: "deb [arch={{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+    state: present
+
+- name: Install Vault
+  apt:
+    name: vault
+    state: present
+
+- name: Configure Vault as a systemd service (Dev Mode)
+  copy:
+    dest: /etc/systemd/system/vault.service
+    content: |
+      [Unit]
+      Description=HashiCorp Vault Service
+      After=network.target
+
+      [Service]
+      ExecStart=/usr/bin/vault server -dev -dev-listen-address=0.0.0.0:8200 -dev-root-token-id=root
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Start and enable Vault
+  systemd:
+    name: vault
+    state: started
+    enabled: yes
+    daemon_reload: yes
