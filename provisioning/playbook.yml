@@ -1,0 +1,11 @@
+---
+- name: Provision DevOps Monitoring Stack
+  hosts: all
+  become: true  # with sudo
+
+  roles:
+    - common
+    # Наступні ролі ми додамо пізніше:
+    # - vault
+    # - jenkins
+    # - zabbix

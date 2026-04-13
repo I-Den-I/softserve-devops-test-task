@@ -1,0 +1,23 @@
+# --- Vagrant ---
+.vagrant/
+*.log
+
+# --- Ansible ---
+*.retry
+.ansible_vault_pass
+
+# --- Secrets ---
+*keys.txt
+*token.txt
+provisioning/roles/*/files/secrets/
+
+# --- OS & IDE ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class

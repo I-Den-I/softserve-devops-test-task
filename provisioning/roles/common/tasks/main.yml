@@ -1,0 +1,21 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install essential packages
+  apt:
+    name:
+      - curl
+      - gnupg2
+      - software-properties-common
+      - apt-transport-https
+      - unzip
+      - python3-pip
+      - ca-certificates
+    state: present
+
+- name: Set timezone to Europe/Kyiv
+  timezone:
+    name: Europe/Kyiv
