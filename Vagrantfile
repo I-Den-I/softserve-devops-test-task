@@ -14,7 +14,7 @@ Vagrant.configure("2") do |config|
   config.vm.provider "vmware_desktop" do |v|
     v.gui = false
     v.cpus = 2
-    v.memory = 2048
+    v.memory = 4096
     v.vmx["ethernet0.virtualDev"] = "vmxnet3" if is_arm
   end
 
@@ -22,7 +22,7 @@ Vagrant.configure("2") do |config|
   config.vm.provider "virtualbox" do |vb|
     vb.gui = false
     vb.cpus = 2
-    vb.memory = 2048
+    vb.memory = 4096
     vb.customize ["modifyvm", :id, "--nictype1", "virtio"]
   end
 
