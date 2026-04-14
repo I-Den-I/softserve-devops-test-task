@@ -1,9 +1,15 @@
 ---
-- name: Clean up all old repo files to avoid "multiple times" errors
-  shell: rm -f /etc/apt/sources.list.d/jenkins.list /etc/apt/sources.list.d/hashicorp.list /etc/apt/sources.list.d/apt_releases_hashicorp_com.list
+# 1. Встановлення Jenkins (твій перевірений робочий блок)
+- name: Clean up old Jenkins repo files
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/jenkins.list
+    - /etc/apt/sources.list.d/jenkins.io.list
   become: yes
 
-- name: Install Java 17, Git and dependencies
+- name: Update apt and install Java 17 and dependencies
   apt:
     name: [fontconfig, openjdk-17-jre, curl, gnupg, git]
     state: present
@@ -15,7 +21,7 @@
     state: directory
     mode: '0755'
 
-- name: Download the Jenkins GPG key
+- name: Download Jenkins GPG key
   get_url:
     url: https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
     dest: /etc/apt/keyrings/jenkins-keyring.asc
@@ -32,8 +38,69 @@
     state: present
     update_cache: yes
 
+# 2. АВТОМАТИЗАЦІЯ: Вимикаємо Setup Wizard та екран розблокування
+- name: Disable Jenkins Setup Wizard via systemd
+  lineinfile:
+    path: /usr/lib/systemd/system/jenkins.service
+    regexp: '^Environment="JAVA_OPTS='
+    line: 'Environment="JAVA_OPTS=-Djava.awt.headless=true -Djenkins.install.runSetupWizard=false"'
+  notify: restart jenkins
+
+# 3. АВТОМАТИЗАЦІЯ: Створення адміна та встановлення плагінів через Groovy
+- name: Create init scripts directory
+  file:
+    path: /var/lib/jenkins/init.groovy.d
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: '0755'
+
+- name: Deploy Master Init Script (Admin + Git Plugins)
+  copy:
+    dest: /var/lib/jenkins/init.groovy.d/01-init-jenkins.groovy
+    owner: jenkins
+    group: jenkins
+    mode: '0644'
+    content: |
+      import jenkins.model.*
+      import hudson.security.*
+      import jenkins.install.*
+
+      def instance = Jenkins.getInstance()
+
+      // 1. Налаштування безпеки (admin/admin)
+      def hudsonRealm = new HudsonPrivateSecurityRealm(false)
+      hudsonRealm.createAccount("admin", "admin")
+      instance.setSecurityRealm(hudsonRealm)
+      def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
+      instance.setAuthorizationStrategy(strategy)
+      
+      // 2. Встановлення плагінів з авто-вирішенням залежностей
+      def pm = instance.getPluginManager()
+      def uc = instance.getUpdateCenter()
+      
+      def plugins = ["git", "workflow-aggregator", "credentials-binding"]
+      def installed = false
+      
+      plugins.each {
+        if (!pm.getPlugin(it)) {
+          def plugin = uc.getPlugin(it)
+          if (plugin) {
+            plugin.deploy()
+            installed = true
+          }
+        }
+      }
+      
+      if (installed) {
+        instance.save()
+        // Jenkins автоматично завантажить залежності при наступному старті
+      }
+
+# 4. Запуск сервісу та застосування змін
 - name: Ensure Jenkins is started and enabled
   systemd:
     name: jenkins
     state: started
     enabled: yes
+    daemon_reload: yes

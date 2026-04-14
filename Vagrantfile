@@ -26,15 +26,15 @@ Vagrant.configure("2") do |config|
     vb.customize ["modifyvm", :id, "--nictype1", "virtio"]
   end
 
-  # network
+# network
   if is_arm
-    config.vm.network "forwarded_port", guest: 8200, host: 8200 # Vault 
-    config.vm.network "forwarded_port", guest: 8080, host: 8080 # Jenkins
-    config.vm.network "forwarded_port", guest: 80, host: 8081   # Zabbix 
+    config.vm.network "forwarded_port", guest: 80, host: 80, host_ip: "127.0.0.1"
+    config.vm.network "forwarded_port", guest: 8200, host: 8200, host_ip: "127.0.0.1"
+    
+    config.vm.network "forwarded_port", guest: 8080, host: 8080, host_ip: "127.0.0.1"
   else
     config.vm.network "private_network", ip: "192.168.56.10"
   end
-
   # Ansible Local
   config.vm.provision "ansible_local" do |ansible|
     ansible.playbook = "provisioning/playbook.yml"

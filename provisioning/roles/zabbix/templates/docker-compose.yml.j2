@@ -8,6 +8,8 @@ services:
     restart: always
 
   zabbix-server:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     image: zabbix/zabbix-server-pgsql:alpine-7.0-latest
     environment:
       - DB_SERVER_HOST=postgres-server
