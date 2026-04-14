@@ -7,4 +7,5 @@
     - common
     - vault
     - jenkins
-    # - zabbix
+    - nginx
+    - zabbix

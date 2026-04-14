@@ -1,0 +1,40 @@
+---
+- name: Install Nginx
+  apt:
+    name: nginx
+    state: present
+
+- name: Remove default Nginx config
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+- name: Deploy Jenkins reverse proxy config
+  template:
+    src: jenkins.conf.j2
+    dest: /etc/nginx/sites-available/jenkins.conf
+
+- name: Enable Jenkins site
+  file:
+    src: /etc/nginx/sites-available/jenkins.conf
+    dest: /etc/nginx/sites-enabled/jenkins.conf
+    state: link
+  notify: Reload Nginx
+
+- name: Deploy Zabbix reverse proxy config
+  template:
+    src: zabbix.conf.j2
+    dest: /etc/nginx/sites-available/zabbix.conf
+
+- name: Enable Zabbix site
+  file:
+    src: /etc/nginx/sites-available/zabbix.conf
+    dest: /etc/nginx/sites-enabled/zabbix.conf
+    state: link
+  notify: Reload Nginx
+
+- name: Ensure Nginx is started and enabled
+  systemd:
+    name: nginx
+    state: started
+    enabled: yes
