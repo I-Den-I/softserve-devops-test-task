@@ -90,19 +90,16 @@ Once the deployment is complete, all services are accessible via the following l
 Below are the visual confirmations of the automated deployment and service health.
 
 ### 1. Zabbix Monitoring Dashboard
-*Description: Main dashboard showing the green ZBX status and active monitoring of the host.*
 ![Zabbix Dashboard](images/zabbix_main.png)
 
 ---
 
 ### 2. Jenkins Automated Setup
-*Description: Proof that the Setup Wizard was bypassed, the admin user was created, and Git plugins are active.*
 ![Jenkins Jobs](images/jenkins_setup.png)
 
 ---
 
 ### 3. HashiCorp Vault Status
-*Description: Vault UI accessible via the reverse proxy on port 80/8200.*
 ![Vault UI](images/vault_status.png)
 
 ---
