@@ -36,8 +36,9 @@ Vagrant.configure("2") do |config|
     config.vm.network "private_network", ip: "192.168.56.10"
   end
   # Ansible Local
+  config.vm.synced_folder ".", "/vagrant", type: "virtualbox" if !is_arm
   config.vm.provision "ansible_local" do |ansible|
-    ansible.playbook = "provisioning/playbook.yml"
+    ansible.playbook = "./provisioning/playbook.yml"
     ansible.install = true
     ansible.compatibility_mode = "2.0"
   end
