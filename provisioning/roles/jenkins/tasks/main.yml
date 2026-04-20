@@ -1,52 +1,78 @@
 ---
-# 1. Встановлення Jenkins (твій перевірений робочий блок)
-- name: Clean up old Jenkins repo files
+# 1. Автоматизоване встановлення Java 21 (Manual Binary Method)
+- name: Create directory for Java 21
   file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - /etc/apt/sources.list.d/jenkins.list
-    - /etc/apt/sources.list.d/jenkins.io.list
-  become: yes
-
-- name: Update apt and install Java 17 and dependencies
-  apt:
-    name: [fontconfig, openjdk-17-jre, curl, gnupg, git]
-    state: present
-    update_cache: yes
-
-- name: Create keyrings directory
-  file:
-    path: /etc/apt/keyrings
+    path: /usr/local/jdk-21
     state: directory
     mode: '0755'
+  become: yes
+
+- name: Download and Extract OpenJDK 21
+  unarchive:
+    src: "{{ (ansible_architecture == 'aarch64') | ternary(
+      'https://download.java.net/java/GA/jdk21.0.2/f2283984656d49d69e91c558476027ac/13/GPL/openjdk-21.0.2_linux-aarch64_bin.tar.gz',
+      'https://download.java.net/java/GA/jdk21.0.2/f2283984656d49d69e91c558476027ac/13/GPL/openjdk-21.0.2_linux-x64_bin.tar.gz'
+    ) }}"
+    dest: /usr/local/jdk-21/
+    remote_src: yes
+    extra_opts: [--strip-components=1] 
+    owner: root
+    group: root
+  become: yes
+
+- name: Set Java Environment Variables
+  copy:
+    dest: /etc/profile.d/jdk21.sh
+    content: |
+      export JAVA_HOME=/usr/local/jdk-21
+      export PATH=$JAVA_HOME/bin:$PATH
+    mode: '0644'
+  become: yes
+
+- name: Update alternatives for Java
+  shell: |
+    update-alternatives --install /usr/bin/java java /usr/local/jdk-21/bin/java 1
+    update-alternatives --set java /usr/local/jdk-21/bin/java
+  become: yes
+
+# 2. Встановлення Jenkins
+- name: Install dependencies
+  apt:
+    name: [fontconfig, curl, gnupg, git]
+    state: present
+    update_cache: yes
+  become: yes
 
 - name: Download Jenkins GPG key
   get_url:
     url: https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
     dest: /etc/apt/keyrings/jenkins-keyring.asc
     mode: '0644'
+  become: yes
 
 - name: Add Jenkins repository
   copy:
     dest: /etc/apt/sources.list.d/jenkins.list
     content: "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/"
+  become: yes
 
 - name: Install Jenkins
   apt:
     name: jenkins
     state: present
     update_cache: yes
+  become: yes
 
-# 2. АВТОМАТИЗАЦІЯ: Вимикаємо Setup Wizard та екран розблокування
+# 3. АВТОМАТИЗАЦІЯ: Вимикаємо Setup Wizard
 - name: Disable Jenkins Setup Wizard via systemd
   lineinfile:
     path: /usr/lib/systemd/system/jenkins.service
     regexp: '^Environment="JAVA_OPTS='
     line: 'Environment="JAVA_OPTS=-Djava.awt.headless=true -Djenkins.install.runSetupWizard=false"'
+  become: yes
   notify: restart jenkins
 
-# 3. АВТОМАТИЗАЦІЯ: Створення адміна та встановлення плагінів через Groovy
+# 4. АВТОМАТИЗАЦІЯ: Groovy-скрипти (Admin + Plugins + Auto-Restart)
 - name: Create init scripts directory
   file:
     path: /var/lib/jenkins/init.groovy.d
@@ -54,8 +80,9 @@
     owner: jenkins
     group: jenkins
     mode: '0755'
+  become: yes
 
-- name: Deploy Master Init Script (Admin + Git Plugins)
+- name: Deploy Master Init Script
   copy:
     dest: /var/lib/jenkins/init.groovy.d/01-init-jenkins.groovy
     owner: jenkins
@@ -67,17 +94,19 @@
       import jenkins.install.*
 
       def instance = Jenkins.getInstance()
-
-      // 1. Налаштування безпеки (admin/admin)
+      
+      // Налаштування безпеки (admin/admin)
       def hudsonRealm = new HudsonPrivateSecurityRealm(false)
       hudsonRealm.createAccount("admin", "admin")
       instance.setSecurityRealm(hudsonRealm)
       def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
       instance.setAuthorizationStrategy(strategy)
       
-      // 2. Встановлення плагінів з авто-вирішенням залежностей
+      // Встановлення плагінів з очікуванням
       def pm = instance.getPluginManager()
       def uc = instance.getUpdateCenter()
+      
+      uc.updateAllSites() // Оновлюємо список плагінів з інтернету
       
       def plugins = ["git", "workflow-aggregator", "credentials-binding"]
       def installed = false
@@ -85,22 +114,25 @@
       plugins.each {
         if (!pm.getPlugin(it)) {
           def plugin = uc.getPlugin(it)
-          if (plugin) {
-            plugin.deploy()
+          if (plugin) { 
+            plugin.deploy().get() // .get() змушує чекати закінчення завантаження
             installed = true
           }
         }
       }
       
+      // Перезавантаження Jenkins після встановлення плагінів
       if (installed) {
         instance.save()
-        // Jenkins автоматично завантажить залежності при наступному старті
+        instance.restart() 
       }
+  become: yes
 
-# 4. Запуск сервісу та застосування змін
+# 5. Запуск сервісу
 - name: Ensure Jenkins is started and enabled
   systemd:
     name: jenkins
     state: started
     enabled: yes
     daemon_reload: yes
+  become: yes

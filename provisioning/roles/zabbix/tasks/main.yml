@@ -103,12 +103,28 @@
     line: 'ServerActive=127.0.0.1'
   notify: Restart Zabbix Agent
 
-- name: Add UserParameter for Service Monitoring
+- name: Ensure Zabbix Agent include directory exists
+  file:
+    path: /etc/zabbix/zabbix_agentd.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: yes
+
+- name: Ensure Agent includes custom config directory
   lineinfile:
     path: /etc/zabbix/zabbix_agentd.conf
-    regexp: '^UserParameter=custom\.service\.status'
-    line: 'UserParameter=custom.service.status[*],systemctl is-active --quiet $1 && echo 1 || echo 0'
-    insertafter: EOF
+    regexp: '^#? ?Include=/etc/zabbix/zabbix_agentd.d/\*\.conf'
+    line: 'Include=/etc/zabbix/zabbix_agentd.d/*.conf'
+  become: yes
+  notify: Restart Zabbix Agent
+
+- name: Add UserParameter template for Service Monitoring
+  template:
+    src: custom_user_parameters.conf.j2
+    dest: /etc/zabbix/zabbix_agentd.d/custom_services.conf
+  become: yes
   notify: Restart Zabbix Agent
 
 - name: Start and enable Zabbix Agent
@@ -132,3 +148,74 @@
     docker exec {{ db_container_name.stdout }} psql -U zabbix -d zabbix -c 
     "UPDATE interface SET useip=0, dns='host.docker.internal', ip='' WHERE hostid=(SELECT hostid FROM hosts WHERE host='Zabbix server');"
   when: db_container_name.stdout != ""
+
+# --- 6. Автоматизація створення Items через Zabbix API ---
+- name: Authenticate to Zabbix API (wait for UI to be ready)
+  uri:
+    url: "http://127.0.0.1:8085/api_jsonrpc.php"
+    method: POST
+    body_format: json
+    body:
+      jsonrpc: "2.0"
+      method: "user.login"
+      params:
+        username: "Admin"
+        password: "zabbix" 
+      id: 1
+  register: zabbix_auth
+  until: zabbix_auth.status == 200 and 'result' in zabbix_auth.json
+  retries: 30
+  delay: 10 
+
+- name: Get Zabbix server Host ID
+  uri:
+    url: "http://127.0.0.1:8085/api_jsonrpc.php"
+    method: POST
+    body_format: json
+    body:
+      jsonrpc: "2.0"
+      method: "host.get"
+      params:
+        filter:
+          host: ["Zabbix server"]
+      auth: "{{ zabbix_auth.json.result }}"
+      id: 2
+  register: zabbix_host
+
+- name: Get Zabbix server Interface ID
+  uri:
+    url: "http://127.0.0.1:8085/api_jsonrpc.php"
+    method: POST
+    body_format: json
+    body:
+      jsonrpc: "2.0"
+      method: "hostinterface.get"
+      params:
+        hostids: ["{{ zabbix_host.json.result[0].hostid }}"]
+      auth: "{{ zabbix_auth.json.result }}"
+      id: 3
+  register: zabbix_interface
+
+- name: Create Monitoring Items for Services via API
+  uri:
+    url: "http://127.0.0.1:8085/api_jsonrpc.php"
+    method: POST
+    body_format: json
+    body:
+      jsonrpc: "2.0"
+      method: "item.create"
+      params:
+        name: "{{ item.name }}"
+        key_: "{{ item.key }}"
+        hostid: "{{ zabbix_host.json.result[0].hostid }}"
+        interfaceid: "{{ zabbix_interface.json.result[0].interfaceid }}"
+        type: 0 
+        value_type: 3 
+        delay: "30s"
+      auth: "{{ zabbix_auth.json.result }}"
+      id: 4
+  loop:
+    - { name: "Jenkins Service Status", key: "custom.service.status[jenkins]" }
+    - { name: "Vault Service Status", key: "custom.service.status[vault]" }
+    - { name: "Zabbix Server Status", key: "custom.service.status[docker]" } 
+  ignore_errors: yes
